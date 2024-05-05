@@ -4,6 +4,33 @@ import torch.nn.functional as F
 from torch import nn, Tensor
 from sentence_transformers.SentenceTransformer import SentenceTransformer
 
+def ed_calc(x):
+    M = x.shape[0]
+    x_expanded = x.unsqueeze(1).expand(-1, M, -1)
+    ed_sum = torch.norm(x_expanded - x, dim=2).sum()
+    return ed_sum / (M * M)
+
+def energy_calc(x, y):
+    M = x.shape[0]
+    N = y.shape[0]
+
+    # Expand tensors to create all pairs of vectors
+    x_expanded = x.unsqueeze(1).expand(-1, N, -1)
+    y_expanded = y.unsqueeze(0).expand(M, -1, -1)
+    
+    # Compute pairwise squared Euclidean distances
+    pairwise_diff = x_expanded - y_expanded
+    squared_distances = torch.sum(pairwise_diff ** 2, dim=2)
+
+    # Sum up squared distances and scale by (M * N)
+    ed_sum = torch.sum(torch.sqrt(squared_distances))
+
+    return 2 * ed_sum / (M * N)
+
+def energy_distance(x, y):
+    ed_query = ed_calc(x)
+    ans = energy_calc(x, y.reshape(1,-1)).item() - ed_query.item()
+    return ans
 
 class SiameseDistanceMetric(Enum):
     """
@@ -13,13 +40,14 @@ class SiameseDistanceMetric(Enum):
     EUCLIDEAN = lambda x, y: F.pairwise_distance(x, y, p=2)
     MANHATTAN = lambda x, y: F.pairwise_distance(x, y, p=1)
     COSINE_DISTANCE = lambda x, y: 1 - F.cosine_similarity(x, y)
+    ENERGY_DISTANCE = lambda x, y: energy_distance(x, y)
 
 
 class ContrastiveLoss(nn.Module):
     def __init__(
         self,
         model: SentenceTransformer,
-        distance_metric=SiameseDistanceMetric.COSINE_DISTANCE,
+        distance_metric=SiameseDistanceMetric.ENERGY_DISTANCE,
         margin: float = 0.5,
         size_average: bool = True,
     ):
