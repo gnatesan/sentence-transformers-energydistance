@@ -119,9 +119,9 @@ class ContrastiveLoss(nn.Module):
         #assert len(reps) == 2
         #rep_anchor, rep_other = reps
         #encode the query into multiple vectors
-        rep_anchor = self.model(sentence_features[0], output_value='token_embeddings')["sentence_embedding"]
+        rep_anchor = self.model(sentence_features[0])["token_embeddings"]
         #encode the document into a single vector
-        rep_other = self.model(sentence_features[1], output_value='sentence_embedding')["sentence_embedding"]
+        rep_other = self.model(sentence_features[1])["sentence_embedding"]
         distances = self.distance_metric(rep_anchor, rep_other)
         losses = 0.5 * (
             labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(self.margin - distances).pow(2)
