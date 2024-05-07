@@ -28,9 +28,25 @@ def energy_calc(x, y):
     return 2 * ed_sum / (M * N)
 
 def energy_distance(x, y):
-    ed_query = ed_calc(x)
-    ans = energy_calc(x, y.reshape(1,-1)).item() - ed_query.item()
-    return ans
+    # Shape of x: [batch_size, num_queries, query_dim]
+    # Shape of y: [batch_size, doc_dim]
+
+    batch_size, num_queries, query_dim = x.shape
+
+    print("first shape", x[0].shape)
+
+    # Pre-calculate energy for all queries in the batch
+    ed_queries = torch.stack([ed_calc(query) for query in x])
+
+    # Initialize a tensor to store the energy distances
+    energy_distances = torch.zeros(batch_size)
+
+    for i in range(batch_size):
+        # Calculate energy distance between query i and document i
+        ed_query = ed_queries[i]
+        energy_distances[i] = energy_calc(x[i], y[i].reshape(1,-1)).item() - ed_query.item()
+
+    return energy_distances
 
 class SiameseDistanceMetric(Enum):
     """
