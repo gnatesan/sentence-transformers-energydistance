@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Iterable, Dict
+import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 from sentence_transformers.SentenceTransformer import SentenceTransformer
@@ -30,23 +31,23 @@ def energy_calc(x, y):
 def energy_distance(x, y):
     # Shape of x: [batch_size, num_queries, query_dim]
     # Shape of y: [batch_size, doc_dim]
-
+    device = x.device
     batch_size, num_queries, query_dim = x.shape
 
-    print("first shape", x[0].shape)
+    #print("first shape", x[0].shape)
 
     # Pre-calculate energy for all queries in the batch
-    ed_queries = torch.stack([ed_calc(query) for query in x])
+    ed_queries = torch.stack([ed_calc(query) for query in x], dim=0).to(device)
 
     # Initialize a tensor to store the energy distances
-    energy_distances = torch.zeros(batch_size)
+    energy_distances = torch.zeros(batch_size, device=device)
 
     for i in range(batch_size):
         # Calculate energy distance between query i and document i
         ed_query = ed_queries[i]
         energy_distances[i] = energy_calc(x[i], y[i].reshape(1,-1)).item() - ed_query.item()
 
-    return energy_distances
+    return energy_distances.requires_grad_()
 
 class SiameseDistanceMetric(Enum):
     """
