@@ -5,12 +5,14 @@ import torch.nn.functional as F
 from torch import nn, Tensor
 from sentence_transformers.SentenceTransformer import SentenceTransformer
 
+#Function to calculate the energy of all vectors in a query
 def ed_calc(x):
     M = x.shape[0]
     x_expanded = x.unsqueeze(1).expand(-1, M, -1)
     ed_sum = torch.norm(x_expanded - x, dim=2).sum()
     return ed_sum / (M * M)
 
+#Function to calcjulate the energy between a single vecctor document and multi-vector query
 def energy_calc(x, y):
     M = x.shape[0]
     N = y.shape[0]
@@ -28,13 +30,14 @@ def energy_calc(x, y):
 
     return 2 * ed_sum / (M * N)
 
+#Function to calculate the energy distance between a batch of queries and a batch of documents.
+#Queries are represented as a tensor of 2d tensors, and documents are represented by a tensor of 
+#1d tensors. Implementation is based off of https://pages.stat.wisc.edu/~wahba/stat860public/pdf4/Energy/EnergyDistance10.1002-wics.1375.pdf
 def energy_distance(x, y):
     # Shape of x: [batch_size, num_queries, query_dim]
     # Shape of y: [batch_size, doc_dim]
     device = x.device
     batch_size, num_queries, query_dim = x.shape
-
-    #print("first shape", x[0].shape)
 
     # Pre-calculate energy for all queries in the batch
     ed_queries = torch.stack([ed_calc(query) for query in x], dim=0).to(device)
@@ -132,9 +135,6 @@ class ContrastiveLoss(nn.Module):
         return {"distance_metric": distance_metric_name, "margin": self.margin, "size_average": self.size_average}
 
     def forward(self, sentence_features: Iterable[Dict[str, Tensor]], labels: Tensor):
-        #reps = [self.model(sentence_feature)["sentence_embedding"] for sentence_feature in sentence_features]
-        #assert len(reps) == 2
-        #rep_anchor, rep_other = reps
         #encode the query into multiple vectors
         rep_anchor = self.model(sentence_features[0])["token_embeddings"]
         #encode the document into a single vector
