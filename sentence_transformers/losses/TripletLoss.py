@@ -3,6 +3,7 @@ from typing import Iterable, Dict
 import torch.nn.functional as F
 from enum import Enum
 from ..SentenceTransformer import SentenceTransformer
+import torch
 
 def ed_calc(x):
     M = x.shape[0]
