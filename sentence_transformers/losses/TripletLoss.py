@@ -47,7 +47,7 @@ def energy_distance(x, y):
         ed_query = ed_queries[i]
         energy_distances[i] = energy_calc(x[i], y[i].reshape(1,-1)).item() - ed_query.item()
 
-    return energy_distances
+    return energy_distances.requires_grad_()
     
 class TripletDistanceMetric(Enum):
     """
