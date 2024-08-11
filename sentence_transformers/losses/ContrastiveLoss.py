@@ -48,7 +48,7 @@ def energy_distance(x, y):
     for i in range(batch_size):
         # Calculate energy distance between query i and document i
         ed_query = ed_queries[i]
-        energy_distances[i] = energy_calc(x[i], y[i].reshape(1,-1)).item() - ed_query.item()
+        energy_distances[i] = energy_calc(x[i], y[i].reshape(1,-1)) - ed_query
 
     return energy_distances.requires_grad_()
 
