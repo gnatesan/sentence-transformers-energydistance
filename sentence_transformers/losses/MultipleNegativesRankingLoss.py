@@ -4,6 +4,49 @@ from typing import Iterable, Dict
 from ..SentenceTransformer import SentenceTransformer
 from .. import util
 
+def ed_calc(x):
+    M = x.shape[0]
+    x_expanded = x.unsqueeze(1).expand(-1, M, -1)
+    ed_sum = torch.norm(x_expanded - x, dim=2).sum()
+    return ed_sum / (M * M)
+
+def energy_calc(x, y):
+    M = x.shape[0]
+    N = y.shape[0]
+
+    # Expand tensors to create all pairs of vectors
+    x_expanded = x.unsqueeze(1).expand(-1, N, -1)
+    y_expanded = y.unsqueeze(0).expand(M, -1, -1)
+    
+    # Compute pairwise squared Euclidean distances
+    pairwise_diff = x_expanded - y_expanded
+    squared_distances = torch.sum(pairwise_diff ** 2, dim=2)
+
+    # Sum up squared distances and scale by (M * N)
+    ed_sum = torch.sum(torch.sqrt(squared_distances))
+
+    return 2 * ed_sum / (M * N)
+
+def energy_distance(x, y):
+    # Shape of x: [batch_size, num_queries, query_dim]
+    # Shape of y: [batch_size, doc_dim]
+
+    batch_size, num_queries, query_dim = x.shape
+
+    #print("first shape", x[0].shape)
+
+    # Pre-calculate energy for all queries in the batch
+    ed_queries = torch.stack([ed_calc(query) for query in x])
+
+    # Initialize a tensor to store the energy distances
+    energy_distances = torch.zeros(batch_size)
+
+    for i in range(batch_size):
+        # Calculate energy distance between query i and document i
+        ed_query = ed_queries[i]
+        energy_distances[i] = energy_calc(x[i], y[i].reshape(1,-1)) - ed_query
+
+    return energy_distances.requires_grad_()
 
 class MultipleNegativesRankingLoss(nn.Module):
     def __init__(self, model: SentenceTransformer, scale: float = 20.0, similarity_fct=util.cos_sim):
