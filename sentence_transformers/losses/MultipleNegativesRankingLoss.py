@@ -29,27 +29,29 @@ def energy_calc(x, y):
 
 def energy_distance(x, y):
     # Shape of x: [batch_size, num_queries, query_dim]
-    # Shape of y: [batch_size, doc_dim]
+    # Shape of y: [batch_size, doc_dim] [16, 768]
 
     batch_size, num_queries, query_dim = x.shape
 
     #print("first shape", x[0].shape)
-
+    #print("Shape of tensor containing sentences:", y.shape)
+    num_negatives = y.shape[1]
     # Pre-calculate energy for all queries in the batch
     ed_queries = torch.stack([ed_calc(query) for query in x])
 
     # Initialize a tensor to store the energy distances
-    energy_distances = torch.zeros(batch_size)
+    energy_distances = torch.zeros(batch_size, batch_size)
 
     for i in range(batch_size):
-        # Calculate energy distance between query i and document i
-        ed_query = ed_queries[i]
-        energy_distances[i] = energy_calc(x[i], y[i].reshape(1,-1)) - ed_query
+        for j in range(batch_size):
+            # Calculate energy distance between query i and document i
+            ed_query = ed_queries[i]
+            energy_distances[i][j] = energy_calc(x[i], y[j].reshape(1,-1)) - ed_query
 
     return energy_distances.requires_grad_()
 
 class MultipleNegativesRankingLoss(nn.Module):
-    def __init__(self, model: SentenceTransformer, scale: float = 20.0, similarity_fct=energy_distance):
+    def __init__(self, model: SentenceTransformer, scale: float = 1.0, similarity_fct=energy_distance):
         """
         This loss expects as input a batch consisting of sentence pairs ``(a_1, p_1), (a_2, p_2)..., (a_n, p_n)``
         where we assume that ``(a_i, p_i)`` are a positive pair and ``(a_i, p_j)`` for ``i != j`` a negative pair.
@@ -127,13 +129,13 @@ class MultipleNegativesRankingLoss(nn.Module):
     def forward(self, sentence_features: Iterable[Dict[str, Tensor]], labels: Tensor):
         reps = [self.model(sentence_feature)["sentence_embedding"] for sentence_feature in sentence_features]
         embeddings_a = self.model(sentence_features[0])["token_embeddings"]
-        print("Anchor dimensions:", embeddings_a.size())
+        #print("Anchor dimensions:", embeddings_a.size())
         #embeddings_a = reps[0]
         embeddings_b = torch.cat(reps[1:])
-        print("Pos and Neg Sentence dimensions:", embeddings_b.size())
+        #print("Pos and Neg Sentence dimensions:", embeddings_b.size())
 
         scores = self.similarity_fct(embeddings_a, embeddings_b) * self.scale
-        print("Score tensor dimensions:", scores.size())
+        #print("Score tensor dimensions:", scores.size())
         labels = torch.tensor(
             range(len(scores)), dtype=torch.long, device=scores.device
         )  # Example a[i] should match with b[i]
