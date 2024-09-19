@@ -30,17 +30,17 @@ def energy_calc(x, y):
 def energy_distance(x, y):
     # Shape of x: [batch_size, num_queries, query_dim]
     # Shape of y: [batch_size, doc_dim] [16, 768]
-
+    device = x.device
     batch_size, num_queries, query_dim = x.shape
 
     #print("first shape", x[0].shape)
     #print("Shape of tensor containing sentences:", y.shape)
     num_negatives = y.shape[1]
     # Pre-calculate energy for all queries in the batch
-    ed_queries = torch.stack([ed_calc(query) for query in x])
+    ed_queries = torch.stack([ed_calc(query) for query in x]).to(device)
 
     # Initialize a tensor to store the energy distances
-    energy_distances = torch.zeros(batch_size, batch_size)
+    energy_distances = torch.zeros(batch_size, batch_size, device=device)
 
     for i in range(batch_size):
         for j in range(batch_size):
@@ -134,11 +134,15 @@ class MultipleNegativesRankingLoss(nn.Module):
         embeddings_b = torch.cat(reps[1:])
         #print("Pos and Neg Sentence dimensions:", embeddings_b.size())
 
-        scores = self.similarity_fct(embeddings_a, embeddings_b) * self.scale
+        scores = self.similarity_fct(embeddings_a, embeddings_b) * self.scale * -1
+        #print("embeddings_a:", embeddings_a.device)
+        #print("embeddings_b:", embeddings_b.device)
+        #print("scores:", scores.device)
         #print("Score tensor dimensions:", scores.size())
         labels = torch.tensor(
             range(len(scores)), dtype=torch.long, device=scores.device
         )  # Example a[i] should match with b[i]
+        #print("labels", labels.device)
         return self.cross_entropy_loss(scores, labels)
 
     def get_config_dict(self):
