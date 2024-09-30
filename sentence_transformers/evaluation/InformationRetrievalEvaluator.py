@@ -5,7 +5,7 @@ import torch
 from torch import Tensor
 import logging
 from tqdm import trange
-from ..util import cos_sim, dot_score, energy_distance
+from ..util import cos_sim, dot_score, energy_distance, ed_calc
 import os
 import numpy as np
 from typing import List, Dict, Optional, Set, Callable
