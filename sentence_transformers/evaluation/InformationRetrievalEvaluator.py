@@ -5,7 +5,7 @@ import torch
 from torch import Tensor
 import logging
 from tqdm import trange
-from ..util import cos_sim, dot_score
+from ..util import cos_sim, dot_score, energy_distance
 import os
 import numpy as np
 from typing import List, Dict, Optional, Set, Callable
@@ -40,6 +40,7 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
         write_csv: bool = True,
         truncate_dim: Optional[int] = None,
         score_functions: Dict[str, Callable[[Tensor, Tensor], Tensor]] = {
+            "energy_distance": energy_distance,
             "cos_sim": cos_sim,
             "dot_score": dot_score,
         },  # Score function, higher=more similar
