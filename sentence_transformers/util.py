@@ -18,6 +18,53 @@ import heapq
 
 logger = logging.getLogger(__name__)
 
+#Function to calculate the energy of all vectors in a query
+def ed_calc(x):
+    M = x.shape[0]
+    x_expanded = x.unsqueeze(1).expand(-1, M, -1)
+    ed_sum = torch.norm(x_expanded - x, dim=2).sum()
+    return ed_sum / (M * M)
+
+#Takes in a 3d tensor of queries where each query is a 2d tensor that has been padded to the 
+#max sequence length in the batch. Also takes in 2d tensor of documents. Multiplied by -1 so larger scores mean higher similarity. 
+def energy_distance(x, y):
+    # Shape of x: [num_queries, max_sequence_length, query_dim]
+    # Shape of y: [num_docs, doc_dim]
+    #print("ED calculation tensors")
+    #print(x.device)  # Check device
+    #print(y.device)  # Check device
+
+    num_queries, max_sequence_length, query_dim = x.shape
+    num_docs, doc_dim = y.shape
+
+    # Check for dimensionality compatibility
+    assert query_dim == doc_dim, "Query and document dimensions must match!"
+
+    # Pre-calculate energy for all queries (batch of 2D query tensors)
+    ed_queries = torch.stack([ed_calc(query) for query in x])
+
+    # Expand query tensor for broadcasting:
+    # x_expanded: [num_queries, num_docs, max_seq_length, query_dim]
+    x_expanded = x.unsqueeze(1).expand(-1, num_docs, -1, -1)
+
+    # Expand document tensor for broadcasting:
+    # y_expanded: [num_queries, num_docs, query_dim] -> unsqueeze for broadcasting
+    y_expanded = y.unsqueeze(0).expand(num_queries, -1, -1)
+
+    # Now, x_expanded has shape [num_queries, num_docs, max_seq_length, query_dim]
+    # y_expanded has shape [num_queries, num_docs, query_dim]
+
+    # Calculate energy distances for all query-document pairs in parallel
+    pairwise_diff = x_expanded - y_expanded.unsqueeze(2)  # Shape: [num_queries, num_docs, max_seq_length, query_dim]
+    squared_distances = torch.sum(pairwise_diff ** 2, dim=3)  # Shape: [num_queries, num_docs, max_seq_length]
+
+    # Compute the sum of sqrt of squared distances for each query-document pair
+    ed_sums = torch.sum(torch.sqrt(squared_distances), dim=2)  # Shape: [num_queries, num_docs]
+
+    # Final energy distance calculation (using pre-calculated query energies)
+    energy_distances = (2 * ed_sums / (max_sequence_length) - ed_queries.unsqueeze(1)) * -1
+
+    return energy_distances
 
 def pytorch_cos_sim(a: Tensor, b: Tensor) -> Tensor:
     """
