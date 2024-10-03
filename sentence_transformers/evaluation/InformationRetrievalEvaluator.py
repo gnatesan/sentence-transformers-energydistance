@@ -41,8 +41,6 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
         truncate_dim: Optional[int] = None,
         score_functions: Dict[str, Callable[[Tensor, Tensor], Tensor]] = {
             "energy_distance": energy_distance,
-            "cos_sim": cos_sim,
-            "dot_score": dot_score,
         },  # Score function, higher=more similar
         main_score_function: str = None,
     ):
@@ -170,6 +168,7 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
             query_embeddings = model.encode(
                 self.queries,
                 show_progress_bar=self.show_progress_bar,
+                output_value="token_embeddings",
                 batch_size=self.batch_size,
                 convert_to_tensor=True,
             )
@@ -200,6 +199,7 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
 
             # Compute cosine similarites
             for name, score_function in self.score_functions.items():
+                logger.error(f"Validation! Calling score function: {name}")
                 pair_scores = score_function(query_embeddings, sub_corpus_embeddings)
 
                 # Get top-k values

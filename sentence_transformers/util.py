@@ -25,9 +25,70 @@ def ed_calc(x):
     ed_sum = torch.norm(x_expanded - x, dim=2).sum()
     return ed_sum / (M * M)
 
+#Function to calcjulate the energy between a single vecctor document and multi-vector query
+def energy_calc(x, y):
+    M = x.shape[0]
+    N = y.shape[0]
+
+    # Expand tensors to create all pairs of vectors
+    x_expanded = x.unsqueeze(1).expand(-1, N, -1)
+    y_expanded = y.unsqueeze(0).expand(M, -1, -1)
+    
+    # Compute pairwise squared Euclidean distances
+    pairwise_diff = x_expanded - y_expanded
+    squared_distances = torch.sum(pairwise_diff ** 2, dim=2)
+
+    # Sum up squared distances and scale by (M * N)
+    ed_sum = torch.sum(torch.sqrt(squared_distances))
+
+    return 2 * ed_sum / (M * N)
+
+#Function to calculate the energy distance between a batch of queries and a batch of documents.
+#Queries are represented as a list of 2d tensors, and documents are represented by a list of 
+#1d tensors. Implementation is based off of https://pages.stat.wisc.edu/~wahba/stat860public/pdf4/Energy/EnergyDistance10.1002-wics.1375.pdf
+def energy_distance(x, y):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Move queries and documents to GPU
+    x = [query.to(device) for query in x]  # List of 2D query tensors
+    y = [doc.to(device) for doc in y]  # List of 1D document tensors
+
+    num_queries = len(x) #number of queries
+    num_documents = len(y) #number of documents
+
+    logger.error(f"Num queries in batch: {num_queries}")
+    logger.error(f"Num documents in batch: {num_documents}")
+
+    #print("Num queries:", num_queries)
+    #print("Num documents:", num_documents)
+
+    #if not isinstance(x, torch.Tensor):
+    #    x = torch.tensor(x)
+
+    #if not isinstance(y, torch.Tensor):
+    #    y = torch.tensor(y)
+    
+    #total_queries, sequence_length, query_dim = x.shape
+    #total_docs, doc_dim = y.shape
+
+    # Pre-calculate energy for all queries
+    ed_queries = torch.stack([ed_calc(query) for query in x]).to(device)
+    #logger.error(f"ed_queries device: {ed_queries.device}")
+
+    # Create a tensor of shape M*N filled with zeros
+    tensor = torch.zeros(num_queries, num_documents, device=device)
+
+    for i in range(num_queries):
+      ed_query = ed_queries[i] #store energy calculation of query to improve runtime
+      #logger.error(f"Device containing query: {x[i].device}, Query: {i}")
+      for j in range(num_documents):
+        tensor[i][j] = (energy_calc(x[i], y[j].reshape(1,-1)).item() - ed_query.item()) * -1
+    logger.error(f"Device containing ED tensor: {tensor.device}")
+    return tensor
+
 #Takes in a 3d tensor of queries where each query is a 2d tensor that has been padded to the 
 #max sequence length in the batch. Also takes in 2d tensor of documents. Multiplied by -1 so larger scores mean higher similarity. 
-def energy_distance(x, y):
+def energy_distance2(x, y):
     # Shape of x: [num_queries, max_sequence_length, query_dim]
     # Shape of y: [num_docs, doc_dim]
     #print("ED calculation tensors")
