@@ -145,9 +145,9 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
             fOut.close()
 
         if self.main_score_function is None:
-            return max([scores[name]["map@k"][max(self.map_at_k)] for name in self.score_function_names])
+            return max([scores[name]["ndcg@k"][max(self.ndcg_at_k)] for name in self.score_function_names])
         else:
-            return scores[self.main_score_function]["map@k"][max(self.map_at_k)]
+            return scores[self.main_score_function]["ndcg@k"][max(self.ndcg_at_k)]
 
     def compute_metrices(
         self, model: SentenceTransformer, corpus_model=None, corpus_embeddings: Tensor = None
