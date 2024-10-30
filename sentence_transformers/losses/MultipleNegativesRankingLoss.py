@@ -28,8 +28,8 @@ def energy_calc2(x, y):
     return 2 * ed_sum / (M * N)
 
 def ed_calc(x, attention_mask):
-    x = x.to(device)
-    attention_mask = attention_mask.to(device)
+    #x = x.to(device)
+    #attention_mask = attention_mask.to(device)
     M = x.shape[0]
 
     #print("Input query tensor (x):")
@@ -55,12 +55,12 @@ def ed_calc(x, attention_mask):
     #print("Masked differences shape:", masked_diffs.shape)
     ed_sum = torch.norm(masked_diffs, dim=2).sum()
     #print("Energy distance sum (ed_sum) padded query embeddings:", ed_sum.item())
-    valid_token_count = attention_mask_expanded.sum().item()
+    valid_token_count = attention_mask_expanded.sum()
     #print("Valid token count:", valid_token_count)
     #return ed_sum / (M * M)
     #ans = ed_sum / (valid_token_count) if valid_token_count > 0 else 0
     #print("Energy distance of query (padded query embeddings):", ans)
-    return ed_sum / (valid_token_count) if valid_token_count > 0 else 0
+    return ed_sum / (valid_token_count)
 
 def energy_calc(x, y, attention_mask):
     M = x.shape[0]
@@ -82,14 +82,14 @@ def energy_calc(x, y, attention_mask):
 
     # Sum up squared distances and scale by (M * N)
     ed_sum = torch.sum(torch.sqrt(squared_distances))
-    valid_token_count = attention_mask_expanded.sum().item()
+    valid_token_count = attention_mask_expanded.sum()
 
     #return 2 * ed_sum / (M * N)
 
     #ans = 2 * ed_sum / (valid_token_count * N) if valid_token_count > 0 else 0
     #print("Energy distance of query-document pair (padded query embeddings):", ans)
 
-    return 2 * ed_sum / (valid_token_count * N) if valid_token_count > 0 else 0
+    return 2 * ed_sum / valid_token_count
 
 def energy_distance(x, y, attention_mask):
     # Shape of x: [batch_size, num_queries, query_dim]
