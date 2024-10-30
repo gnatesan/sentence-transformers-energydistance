@@ -4,13 +4,13 @@ from typing import Iterable, Dict
 from ..SentenceTransformer import SentenceTransformer
 from .. import util
 
-def ed_calc(x):
+def ed_calc2(x):
     M = x.shape[0]
     x_expanded = x.unsqueeze(1).expand(-1, M, -1)
     ed_sum = torch.norm(x_expanded - x, dim=2).sum()
     return ed_sum / (M * M)
 
-def energy_calc(x, y):
+def energy_calc2(x, y):
     M = x.shape[0]
     N = y.shape[0]
 
@@ -27,7 +27,71 @@ def energy_calc(x, y):
 
     return 2 * ed_sum / (M * N)
 
-def energy_distance(x, y):
+def ed_calc(x, attention_mask):
+    x = x.to(device)
+    attention_mask = attention_mask.to(device)
+    M = x.shape[0]
+
+    #print("Input query tensor (x):")
+    #print(x)
+    #print("Shape of input query tensor:", x.shape)
+
+    #print("Attention mask for single query:")
+    #print(attention_mask)
+    #print("Shape of attention mask:", attention_mask.shape)
+
+    attention_mask_expanded = attention_mask.unsqueeze(1).expand(-1, M) * attention_mask.unsqueeze(0).expand(M, -1)
+
+    #print("Attention mask expanded shape:", attention_mask_expanded.shape)
+    #print("Expanded attention mask:")
+    #print(attention_mask_expanded)
+
+    x_expanded = x.unsqueeze(1).expand(-1, M, -1)
+    #print("Expanded input tensor shape:", x_expanded.shape)
+    #ed_sum = torch.norm(x_expanded - x, dim=2).sum()
+    pairwise_diffs = x_expanded - x
+    #print("Pairwise differences shape:", pairwise_diffs.shape)
+    masked_diffs = pairwise_diffs * attention_mask_expanded.unsqueeze(-1)
+    #print("Masked differences shape:", masked_diffs.shape)
+    ed_sum = torch.norm(masked_diffs, dim=2).sum()
+    #print("Energy distance sum (ed_sum) padded query embeddings:", ed_sum.item())
+    valid_token_count = attention_mask_expanded.sum().item()
+    #print("Valid token count:", valid_token_count)
+    #return ed_sum / (M * M)
+    #ans = ed_sum / (valid_token_count) if valid_token_count > 0 else 0
+    #print("Energy distance of query (padded query embeddings):", ans)
+    return ed_sum / (valid_token_count) if valid_token_count > 0 else 0
+
+def energy_calc(x, y, attention_mask):
+    M = x.shape[0]
+    N = y.shape[0]
+
+    #print(x.device)  # Check device
+    #print(y.device)  # Check device
+
+    # Expand tensors to create all pairs of vectors
+    x_expanded = x.unsqueeze(1).expand(-1, N, -1)
+    y_expanded = y.unsqueeze(0).expand(M, -1, -1)
+
+    # Compute pairwise squared Euclidean distances
+    pairwise_diff = x_expanded - y_expanded
+    attention_mask_expanded = attention_mask.unsqueeze(1).expand(-1, N)
+    masked_diffs = pairwise_diff * attention_mask_expanded.unsqueeze(-1)
+    #squared_distances = torch.sum(pairwise_diff ** 2, dim=2)
+    squared_distances = torch.sum(masked_diffs ** 2, dim=2)
+
+    # Sum up squared distances and scale by (M * N)
+    ed_sum = torch.sum(torch.sqrt(squared_distances))
+    valid_token_count = attention_mask_expanded.sum().item()
+
+    #return 2 * ed_sum / (M * N)
+
+    #ans = 2 * ed_sum / (valid_token_count * N) if valid_token_count > 0 else 0
+    #print("Energy distance of query-document pair (padded query embeddings):", ans)
+
+    return 2 * ed_sum / (valid_token_count * N) if valid_token_count > 0 else 0
+
+def energy_distance(x, y, attention_mask):
     # Shape of x: [batch_size, num_queries, query_dim]
     # Shape of y: [batch_size, doc_dim] [16, 768]
     device = x.device
@@ -37,7 +101,7 @@ def energy_distance(x, y):
     #print("Shape of tensor containing sentences:", y.shape)
     num_negatives = y.shape[1]
     # Pre-calculate energy for all queries in the batch
-    ed_queries = torch.stack([ed_calc(query) for query in x]).to(device)
+    ed_queries = torch.stack([ed_calc(query, attention_mask[i]) for i, query in enumerate(x)]).to(device)
 
     # Initialize a tensor to store the energy distances
     energy_distances = torch.zeros(batch_size, batch_size, device=device)
@@ -46,7 +110,7 @@ def energy_distance(x, y):
         for j in range(batch_size):
             # Calculate energy distance between query i and document i
             ed_query = ed_queries[i]
-            energy_distances[i][j] = energy_calc(x[i], y[j].reshape(1,-1)) - ed_query
+            energy_distances[i][j] = energy_calc(x[i], y[j].reshape(1,-1), attention_mask[i]) - ed_query
 
     return energy_distances.requires_grad_()
 
@@ -133,10 +197,11 @@ class MultipleNegativesRankingLoss(nn.Module):
         #embeddings_a = reps[0]
         embeddings_b = torch.cat(reps[1:])
         #print("Pos and Neg Sentence dimensions:", embeddings_b.size())
-
-        scores = self.similarity_fct(embeddings_a, embeddings_b) * self.scale * -1
+        attention_mask = self.model(sentence_features[0])["attention_mask"]        
+        scores = self.similarity_fct(embeddings_a, embeddings_b, attention_mask) * self.scale * -1
         #print("embeddings_a:", embeddings_a.device)
         #print("embeddings_b:", embeddings_b.device)
+        #print("attention_mask:", attention_mask.device)
         #print("scores:", scores.device)
         #print("Score tensor dimensions:", scores.size())
         labels = torch.tensor(
