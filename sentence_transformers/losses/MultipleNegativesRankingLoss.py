@@ -27,7 +27,7 @@ def energy_calc2(x, y):
 
     return 2 * ed_sum / (M * N)
 
-def ed_calc(x, attention_mask):
+def ed_calc3(x, attention_mask):
     #x = x.to(device)
     #attention_mask = attention_mask.to(device)
     M = x.shape[0]
@@ -62,7 +62,7 @@ def ed_calc(x, attention_mask):
     #print("Energy distance of query (padded query embeddings):", ans)
     return ed_sum / (valid_token_count)
 
-def energy_calc(x, y, attention_mask):
+def energy_calc3(x, y, attention_mask):
     M = x.shape[0]
     N = y.shape[0]
 
@@ -90,6 +90,69 @@ def energy_calc(x, y, attention_mask):
     #print("Energy distance of query-document pair (padded query embeddings):", ans)
 
     return 2 * ed_sum / valid_token_count
+
+def ed_calc(x, attention_mask):
+    M = x.shape[0]
+
+    attention_mask_expanded = attention_mask.unsqueeze(1).expand(-1, M) * attention_mask.unsqueeze(0).expand(M, -1)
+    x_expanded = x.unsqueeze(1).expand(-1, M, -1)
+    pairwise_diffs = x_expanded - x
+
+    # Compute squared distances without applying the mask
+    squared_distances = torch.sum(pairwise_diffs ** 2, dim=2)
+
+    # Add epsilon only to zero values in squared_distances
+    epsilon = 1e-8
+    squared_distances += (squared_distances == 0) * epsilon
+    #squared_distances = torch.where(squared_distances == 0, squared_distances + epsilon, squared_distances)
+
+    # Take the square root
+    sqrt_distances = torch.sqrt(squared_distances)
+    if torch.isnan(sqrt_distances).any():
+        print("NaN detected in sqrt_distances")
+
+
+    # Now apply the mask: attention_mask_expanded needs to have the shape [M, M]
+    masked_sqrt_distances = sqrt_distances * attention_mask_expanded
+
+    # Sum masked distances and normalize by valid tokens
+    ed_sum = torch.sum(masked_sqrt_distances)
+    valid_token_count = attention_mask_expanded.sum()
+
+    #print("attention_mask", attention_mask.device)
+    #print("attention_mask_expanded", attention_mask_expanded.device)
+    #print("valid_token_count", valid_token_count.device)
+    #print("sqrt_distances", sqrt_distances.device)
+    #print("masked_sqrt_distances", masked_sqrt_distances.device)
+    #print("ed_sum", ed_sum.device)
+
+    return ed_sum / valid_token_count
+
+def energy_calc(x, y, attention_mask):
+    M = x.shape[0]
+    N = y.shape[0]
+
+    # Expand tensors to create all pairs of vectors
+    x_expanded = x.unsqueeze(1).expand(-1, N, -1)
+    y_expanded = y.unsqueeze(0).expand(M, -1, -1)
+    pairwise_diff = x_expanded - y_expanded
+
+    # Compute squared distances without applying the mask
+    squared_distances = torch.sum(pairwise_diff ** 2, dim=2)
+
+    # Take the square root
+    sqrt_distances = torch.sqrt(squared_distances)
+
+    # Now apply the mask: attention_mask_expanded needs to have the shape [M, N]
+    attention_mask_expanded = attention_mask.unsqueeze(1).expand(-1, N)
+    masked_sqrt_distances = sqrt_distances * attention_mask_expanded
+
+    # Sum masked distances and normalize by valid tokens
+    ed_sum = torch.sum(masked_sqrt_distances)
+    valid_token_count = attention_mask_expanded.sum()
+
+    return 2 * ed_sum / valid_token_count
+
 
 def energy_distance(x, y, attention_mask):
     # Shape of x: [batch_size, num_queries, query_dim]
