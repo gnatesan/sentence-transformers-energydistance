@@ -91,7 +91,7 @@ def energy_calc3(x, y, attention_mask):
 
     return 2 * ed_sum / valid_token_count
 
-def ed_calc(x, attention_mask):
+def ed_calc4(x, attention_mask):
     M = x.shape[0]
 
     attention_mask_expanded = attention_mask.unsqueeze(1).expand(-1, M) * attention_mask.unsqueeze(0).expand(M, -1)
@@ -128,7 +128,7 @@ def ed_calc(x, attention_mask):
 
     return ed_sum / valid_token_count
 
-def energy_calc(x, y, attention_mask):
+def energy_calc4(x, y, attention_mask):
     M = x.shape[0]
     N = y.shape[0]
 
@@ -152,6 +152,39 @@ def energy_calc(x, y, attention_mask):
     valid_token_count = attention_mask_expanded.sum()
 
     return 2 * ed_sum / valid_token_count
+
+def ed_calc(x, attention_mask):
+    # Sum of the attention mask to get the index range of valid tokens
+    valid_length = attention_mask.sum().item()
+
+    # Slice the query embedding to include only the valid tokens
+    valid_embeddings = x[:valid_length]
+
+    M = valid_embeddings.shape[0]
+    x_expanded = valid_embeddings.unsqueeze(1).expand(-1, M, -1)
+    ed_sum = torch.norm(x_expanded - valid_embeddings, dim=2).sum()
+    return ed_sum / (M * M)
+
+def energy_calc(x, y, attention_mask):
+    # Sum of the attention mask to get the index range of valid tokens
+    valid_length = attention_mask.sum().item()
+
+    # Slice the query embedding to include only the valid tokens
+    valid_x = x[:valid_length]
+    M = valid_x.shape[0]  # Number of valid tokens
+    N = y.shape[0]  # Number of tokens in document embedding
+
+    # Expand tensors to create all pairs of vectors
+    x_expanded = valid_x.unsqueeze(1).expand(-1, N, -1)
+    y_expanded = y.unsqueeze(0).expand(M, -1, -1)
+    pairwise_diff = x_expanded - y_expanded
+
+    # Compute Euclidean distances with torch.norm
+    distances = torch.norm(pairwise_diff, dim=2)
+
+    # Sum distances and normalize by the valid token count
+    ed_sum = torch.sum(distances)
+    return 2 * ed_sum / (M * N)
 
 
 def energy_distance(x, y, attention_mask):
