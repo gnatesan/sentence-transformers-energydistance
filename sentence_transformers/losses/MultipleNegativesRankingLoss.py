@@ -153,7 +153,7 @@ def energy_calc4(x, y, attention_mask):
 
     return 2 * ed_sum / valid_token_count
 
-def ed_calc(x, attention_mask):
+def ed_calc5(x, attention_mask):
     # Sum of the attention mask to get the index range of valid tokens
     valid_length = attention_mask.sum().item()
 
@@ -165,7 +165,7 @@ def ed_calc(x, attention_mask):
     ed_sum = torch.norm(x_expanded - valid_embeddings, dim=2).sum()
     return ed_sum / (M * M)
 
-def energy_calc(x, y, attention_mask):
+def energy_calc5(x, y, attention_mask):
     # Sum of the attention mask to get the index range of valid tokens
     valid_length = attention_mask.sum().item()
 
@@ -187,7 +187,44 @@ def energy_calc(x, y, attention_mask):
     return 2 * ed_sum / (M * N)
 
 
-def energy_distance(x, y, attention_mask):
+def ed_calc(x, attention_mask):
+    """
+    Calculate the energy for all queries in parallel, accounting for padding.
+
+    Args:
+	x (torch.Tensor): Query embeddings of shape [num_queries, max_sequence_length, query_dim].
+        attention_mask (torch.Tensor): Mask of shape [num_queries, max_sequence_length],
+                                        where 1 indicates valid tokens and 0 indicates padding.
+
+    Returns:
+	torch.Tensor: Energy values for each query, shape [num_queries].
+    """
+    # Shape: [num_queries, max_sequence_length, query_dim]
+    num_queries, max_sequence_length, query_dim = x.shape
+
+    # Create pairwise differences: [num_queries, max_sequence_length, max_sequence_length, query_dim]
+    x_expanded_1 = x.unsqueeze(2)  # Expand along the second dimension
+    x_expanded_2 = x.unsqueeze(1)  # Expand along the third dimension
+    pairwise_diff = x_expanded_1 - x_expanded_2
+
+    # Compute pairwise distances: [num_queries, max_sequence_length, max_sequence_length]
+    pairwise_distances = torch.norm(pairwise_diff, dim=3)
+
+    # Apply the attention mask to exclude padded tokens
+    attention_mask_expanded = attention_mask.unsqueeze(2) & attention_mask.unsqueeze(1)  # [num_queries, max_sequence_length, max_sequence_length]
+    pairwise_distances = pairwise_distances * attention_mask_expanded  # Mask padded positions
+
+    # Count valid token pairs for normalization
+    valid_pairs = attention_mask_expanded.sum(dim=(1, 2)).clamp(min=1)  # Shape: [num_queries]
+
+    # Sum of distances and normalize
+    ed_sums = pairwise_distances.sum(dim=(1, 2))  # Sum across all pairs
+    energy = ed_sums / valid_pairs  # Normalize by the number of valid pairs
+    #print("ed_calc_new result:", energy)
+    return energy  # Shape: [num_queries]
+
+
+def energy_distance_old(x, y, attention_mask):
     # Shape of x: [batch_size, num_queries, query_dim]
     # Shape of y: [batch_size, doc_dim] [16, 768]
     device = x.device
@@ -209,6 +246,57 @@ def energy_distance(x, y, attention_mask):
             energy_distances[i][j] = energy_calc(x[i], y[j].reshape(1,-1), attention_mask[i]) - ed_query
 
     return energy_distances.requires_grad_()
+
+def energy_distance(x, y, attention_mask):
+    # Shape of x: [num_queries, max_sequence_length, query_dim]
+    # Shape of y: [num_docs, doc_dim]
+    #print("ED calculation tensors")
+    #print(x.device)  # Check device
+    #print(y.device)  # Check device
+
+    num_queries, max_sequence_length, query_dim = x.shape
+    num_docs, doc_dim = y.shape
+
+    # Check for dimensionality compatibility
+    assert query_dim == doc_dim, "Query and document dimensions must match!"
+
+    # Pre-calculate energy for all queries (batch of 2D query tensors)
+    ed_queries = ed_calc(x, attention_mask)
+
+    # Expand query tensor for broadcasting:
+    # x_expanded: [num_queries, num_docs, max_seq_length, query_dim]
+    x_expanded = x.unsqueeze(1).expand(-1, num_docs, -1, -1)
+
+    # Expand document tensor for broadcasting:
+    # y_expanded: [num_queries, num_docs, query_dim] -> unsqueeze for broadcasting
+    y_expanded = y.unsqueeze(0).expand(num_queries, -1, -1)
+
+    # Now, x_expanded has shape [num_queries, num_docs, max_seq_length, query_dim]
+    # y_expanded has shape [num_queries, num_docs, query_dim]
+
+    # Calculate energy distances for all query-document pairs in parallel
+    pairwise_diff = x_expanded - y_expanded.unsqueeze(2)  # Shape: [num_queries, num_docs, max_seq_length, query_dim]
+    pairwise_distances = torch.norm(pairwise_diff, dim=3)
+
+    #squared_distances = torch.sum(pairwise_diff ** 2, dim=3)  # Shape: [num_queries, num_docs, max_seq_length]
+
+    # Apply attention mask to zero out padded embeddings
+    # Expand attention_mask for broadcasting: [num_queries, max_sequence_length] -> [num_queries, 1, max_sequence_length]
+    attention_mask_expanded = attention_mask.unsqueeze(1).expand(-1, num_docs, -1)
+    pairwise_distances = pairwise_distances * attention_mask_expanded
+
+    # Compute the sum of sqrt of squared distances for each query-document pair
+    #ed_sums = torch.sum(torch.sqrt(squared_distances), dim=2)  # Shape: [num_queries, num_docs]
+
+    # Sum distances and normalize by valid token count for each query-document pair
+    # valid_token_counts: [num_queries, 1, max_sequence_length] -> [num_queries, num_docs]
+    valid_token_counts = attention_mask_expanded.sum(dim=2).clamp(min=1)  # Avoid division by zero
+    ed_sums = torch.sum(pairwise_distances, dim=2) / valid_token_counts
+
+    # Final energy distance calculation (using pre-calculated query energies)
+    energy_distances = 2 * ed_sums - ed_queries.unsqueeze(1)
+
+    return energy_distances
 
 class MultipleNegativesRankingLoss(nn.Module):
     def __init__(self, model: SentenceTransformer, scale: float = 1.0, similarity_fct=energy_distance):

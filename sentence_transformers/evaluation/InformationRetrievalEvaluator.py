@@ -165,7 +165,7 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
 
         # Compute embedding for the queries
         with nullcontext() if self.truncate_dim is None else model.truncate_sentence_embeddings(self.truncate_dim):
-            query_embeddings = model.encode(
+            query_embeddings, attention_mask = model.encode(
                 self.queries,
                 show_progress_bar=self.show_progress_bar,
                 output_value="token_embeddings",
@@ -200,7 +200,7 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
             # Compute cosine similarites
             for name, score_function in self.score_functions.items():
                 logger.error(f"Validation! Calling score function: {name}")
-                pair_scores = score_function(query_embeddings, sub_corpus_embeddings)
+                pair_scores = score_function(query_embeddings, sub_corpus_embeddings, attention_mask)
 
                 # Get top-k values
                 pair_scores_top_k_values, pair_scores_top_k_idx = torch.topk(
