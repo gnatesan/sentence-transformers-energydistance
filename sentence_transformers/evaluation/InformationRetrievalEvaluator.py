@@ -149,6 +149,17 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
         else:
             return scores[self.main_score_function]["ndcg@k"][max(self.ndcg_at_k)]
 
+    def precompute_corpus_embeddings(corpus, model, batch_size, chunk_size):
+        all_corpus_embeddings = []
+        for start_idx in range(0, len(corpus), chunk_size):
+            end_idx = min(start_idx + chunk_size, len(corpus))
+            chunk = corpus[start_idx:end_idx]
+            embeddings = model.encode(chunk, batch_size=batch_size, convert_to_tensor=True)
+            all_corpus_embeddings.append(embeddings)
+        return all_corpus_embeddings
+
+
+    
     def compute_metrices(
         self, model: SentenceTransformer, corpus_model=None, corpus_embeddings: Tensor = None
     ) -> Dict[str, float]:
@@ -179,26 +190,35 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
             #queries_result_list[name] = [[] for _ in range(len(query_embeddings))]
             queries_result_list[name] = [[] for _ in range(approx_total_queries)]
 
+        # Precompute all corpus embeddings
+        all_corpus_embeddings = precompute_corpus_embeddings(
+            corpus=self.corpus,
+            model=corpus_model,  # Use the corpus-specific model
+            batch_size=self.batch_size,
+            chunk_size=self.corpus_chunk_size
+        )
+
         # Iterate over chunks of the corpus along with each query batch 
         for query_batch_index, query_batch in enumerate(query_embeddings):
-            for corpus_start_idx in trange(
-                0, len(self.corpus), self.corpus_chunk_size, desc="Corpus Chunks", disable=not self.show_progress_bar
-            ):
-                corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(self.corpus))
+            for chunk_idx, sub_corpus_embeddings in enumerate(all_corpus_embeddings):
+            #for corpus_start_idx in trange(
+            #    0, len(self.corpus), self.corpus_chunk_size, desc="Corpus Chunks", disable=not self.show_progress_bar
+            #):
+                #corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(self.corpus))
     
                 # Encode chunk of corpus
-                if corpus_embeddings is None:
-                    with nullcontext() if self.truncate_dim is None else corpus_model.truncate_sentence_embeddings(
-                        self.truncate_dim
-                    ):
-                        sub_corpus_embeddings = corpus_model.encode(
-                            self.corpus[corpus_start_idx:corpus_end_idx],
-                            show_progress_bar=False,
-                            batch_size=self.batch_size,
-                            convert_to_tensor=True,
-                        )
-                else:
-                    sub_corpus_embeddings = corpus_embeddings[corpus_start_idx:corpus_end_idx]
+                #if corpus_embeddings is None:
+                #    with nullcontext() if self.truncate_dim is None else corpus_model.truncate_sentence_embeddings(
+                #        self.truncate_dim
+                #    ):
+                #        sub_corpus_embeddings = corpus_model.encode(
+                #            self.corpus[corpus_start_idx:corpus_end_idx],
+                #            show_progress_bar=False,
+                #            batch_size=self.batch_size,
+                #            convert_to_tensor=True,
+                #        )
+                #else:
+                #    sub_corpus_embeddings = corpus_embeddings[corpus_start_idx:corpus_end_idx]
     
                 # Compute cosine similarites
                 for name, score_function in self.score_functions.items(): #ED should be the only score function in score_functions
@@ -214,7 +234,7 @@ class InformationRetrievalEvaluator(SentenceEvaluator):
                     pair_scores_top_k_idx = pair_scores_top_k_idx.cpu().tolist()
     
                     for query_itr in range(len(query_batch)):
-                        query_batch_size = len(query_batch)
+                        #query_batch_size = len(query_batch)
                         global_query_index = query_itr + (query_batch_index * self.batch_size)
                         for sub_corpus_id, score in zip(
                             pair_scores_top_k_idx[query_itr], pair_scores_top_k_values[query_itr]
